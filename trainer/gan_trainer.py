@@ -4,6 +4,12 @@ import torch.autograd
 from model import loss
 from PIL import Image
 
+
+def adjust_learning_rate(optimizer, epoch, base_lr):
+    lr = base_lr * (0.1 ** (epoch // 10))
+    for param_group in optimizer.param_groups:
+        param_group['lr'] = lr
+
 def to_variable(x):
     return torch.autograd.Variable(x.cuda() if torch.cuda.is_available() else x)
 
@@ -19,6 +25,7 @@ class GANTrainer:
         self.dataA, self.dataB = class_a_data_loader, class_b_data_loader
         self.config = config
 
+        self.base_lr = 0.0001
         self.gen_optimizer = torch.optim.Adam(list(self.genAB.parameters()) + list(self.genBA.parameters()), lr=0.00001,
                                               betas=[0.5, 0.99])
         self.disc_optimizer = torch.optim.Adam(list(self.discA.parameters()) + list(self.discB.parameters()), lr=0.00001,
@@ -34,7 +41,7 @@ class GANTrainer:
         a_iterator, b_iterator = iter(self.dataA), iter(self.dataB)
         n_iterations = min(len(a_iterator), len(b_iterator))
 
-        for n_epoch in range(0, 20):
+        for n_epoch in range(0, 100):
             avg_real_loss, avg_fake_loss = 0, 0
             avg_a_b_loss, avg_b_a_loss = 0, 0
             for n_iter in range(0, n_iterations):
@@ -89,10 +96,10 @@ class GANTrainer:
                     break
 
             print('EPOCH {}'.format(n_epoch))
-            print("\tAverage real loss: {}".format(avg_real_loss/n_iterations))
-            print("\tAverage fake loss: {}".format(avg_fake_loss/n_iterations))
-            print("\tAverage A->B->A loss: {}".format(avg_a_b_loss/n_iterations))
-            print("\tAverage B->A->B loss: {}".format(avg_b_a_loss/n_iterations))
+            print("   Average real loss: {}".format(avg_real_loss/n_iterations))
+            print("   Average fake loss: {}".format(avg_fake_loss/n_iterations))
+            print("   Average A->B->A loss: {}".format(avg_a_b_loss/n_iterations))
+            print("   Average B->A->B loss: {}".format(avg_b_a_loss/n_iterations))
 
             # Redeclare iterators in order to train over the set again
             a_iterator, b_iterator = iter(self.dataA), iter(self.dataB)
@@ -103,7 +110,12 @@ class GANTrainer:
             torch.save(self.discA.state_dict(), './data/models/{}_discA.pkl'.format(n_epoch))
             torch.save(self.discB.state_dict(), './data/models/{}_discB.pkl'.format(n_epoch))
 
+            self.update_optimizers(n_epoch)
 
     def reset_optimizers(self):
         self.gen_optimizer.zero_grad()
         self.disc_optimizer.zero_grad()
+
+    def update_optimizers(self, epoch):
+        adjust_learning_rate(self.gen_optimizer, epoch, self.base_lr)
+        adjust_learning_rate(self.gen_optimizer, epoch, self.base_lr)
