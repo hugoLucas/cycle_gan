@@ -33,3 +33,14 @@ class SVHNDataLoader(BaseDataLoader):
         self.data_dir = data_dir
         self.dataset = datasets.SVHN(self.data_dir, split='train', download=True, transform=trsfm)
         super(SVHNDataLoader, self).__init__(self.dataset, batch_size, shuffle, validation_split, num_workers)
+
+class SVHNDataLoaderValidation(BaseDataLoader):
+    def __init__(self, data_dir, batch_size, shuffle, validation_split, num_workers, img_size, training=True):
+        trsfm = transforms.Compose([
+            transforms.Resize([img_size, img_size]),
+            transforms.ToTensor()
+        ])
+
+        self.data_dir = data_dir
+        self.dataset = datasets.SVHN(self.data_dir, split='train', download=True, transform=trsfm)
+        super(SVHNDataLoaderValidation, self).__init__(self.dataset, batch_size, shuffle, validation_split, num_workers)

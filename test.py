@@ -1,82 +1,78 @@
-import os
-import argparse
+from trainer.gan_trainer import to_variable, to_numpy
+from data_loader import data_loaders
+from model import cycle_gan
+
+from torchvision import transforms
+import numpy as np
+import cv2 as cv
 import torch
-from tqdm import tqdm
-import data_loader.data_loaders as module_data
-import model.loss as module_loss
-import model.metric as module_metric
-import model.model as module_arch
-from train import get_instance
 
+def convert_svhn(old_svhn):
+    new_svhn = np.zeros((32, 32, 3))
+    for dim in range(0, 3):
+        new_svhn[:,:,dim] = old_svhn[dim,:,:]
+    return new_svhn
 
-def main(config, resume):
-    # setup data_loader instances
-    data_loader = getattr(module_data, config['data_loader']['type'])(
-        config['data_loader']['args']['data_dir'],
-        batch_size=512,
-        shuffle=False,
-        validation_split=0.0,
-        training=False,
-        num_workers=2
-    )
+checkpoint_number = 99
 
-    # build model architecture
-    model = get_instance(module_arch, 'arch', config)
-    model.summary()
+generator_ab = cycle_gan.Generator(input_class_channels=1, output_class_channels=3, internal_channels=64)
+generator_ba = cycle_gan.Generator(input_class_channels=3, output_class_channels=1, internal_channels=64)
 
-    # get function handles of loss and metrics
-    loss_fn = getattr(module_loss, config['loss'])
-    metric_fns = [getattr(module_metric, met) for met in config['metrics']]
+generator_ab.load_state_dict(torch.load('./data/models/genAB-{}.pkl'.format(checkpoint_number)))
+generator_ba.load_state_dict(torch.load('./data/models/genBA-{}.pkl'.format(checkpoint_number)))
 
-    # load state dict
-    checkpoint = torch.load(resume)
-    state_dict = checkpoint['state_dict']
-    if config['n_gpu'] > 1:
-        model = torch.nn.DataParallel(model)
-    model.load_state_dict(state_dict)
+generator_ab.cuda()
+generator_ba.cuda()
 
-    # prepare model for testing
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    model = model.to(device)
-    model.eval()
+svhn_loader = data_loaders.SVHNDataLoaderValidation(data_dir='./data/svhn/', batch_size=10, shuffle=True,
+                                                    validation_split=0.0, num_workers=1, img_size=32, training=True)
+mnist_loader = data_loaders.MnistDataLoader(data_dir='./data/mnist/', batch_size=10, shuffle=True, validation_split=0.0,
+                                           num_workers=1, img_size=32, training=True)
 
-    total_loss = 0.0
-    total_metrics = torch.zeros(len(metric_fns))
+svhn_iterator, mnist_iterator = iter(svhn_loader), iter(mnist_loader)
+svhn_data, _ = next(svhn_iterator)
+mnist_data, _ = next(mnist_iterator)
 
-    with torch.no_grad():
-        for i, (data, target) in enumerate(tqdm(data_loader)):
-            data, target = data.to(device), target.to(device)
-            output = model(data)
-            #
-            # save sample images, or do something with output here
-            #
-            
-            # computing loss, metrics on test set
-            loss = loss_fn(output, target)
-            batch_size = data.shape[0]
-            total_loss += loss.item() * batch_size
-            for i, metric in enumerate(metric_fns):
-                total_metrics[i] += metric(output, target) * batch_size
+svhn_data, mnist_data = to_variable(svhn_data), to_variable(mnist_data)
+fake_svhn, fake_mnist = generator_ab(mnist_data), generator_ba((svhn_data - 0.50)/0.50)
 
-    n_samples = len(data_loader.sampler)
-    log = {'loss': total_loss / n_samples}
-    log.update({met.__name__ : total_metrics[i].item() / n_samples for i, met in enumerate(metric_fns)})
-    print(log)
+ii = 1
+for real_svhn, real_mnist, gen_svhn, gen_mnist in zip(svhn_data, mnist_data, fake_svhn, fake_mnist):
+    # Convert each sample into a numpy array in order to display with opencv
+    real_svhn, real_mnist = to_numpy(real_svhn), to_numpy(real_mnist)
+    gen_svhn, gen_mnist = to_numpy(gen_svhn), to_numpy(gen_mnist)
 
+    # Rearrange indices in order to put the channel index at the end
+    real_svhn, gen_svhn = convert_svhn(real_svhn), convert_svhn(gen_svhn)
 
-if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='PyTorch Template')
+    # Convert SVHN samples into BGR from RGB
+    # real_svhn, gen_svhn = cv.cvtColor(real_svhn, cv.COLOR_BGR2RGB), cv.cvtColor(gen_svhn, cv.COLOR_BGR2RGB)
 
-    parser.add_argument('-r', '--resume', default=None, type=str,
-                           help='path to latest checkpoint (default: None)')
-    parser.add_argument('-d', '--device', default=None, type=str,
-                           help='indices of GPUs to enable (default: all)')
+    cv.imshow('FAKE MNIST', gen_mnist.squeeze(0))
+    cv.imshow('REAL MNIST', real_mnist.squeeze(0))
+    cv.imshow('FAKE SVHN', (gen_svhn * 0.50) + 0.50)
+    cv.imshow('REAL SVHN', real_svhn)
 
-    args = parser.parse_args()
+    print(real_svhn)
 
-    if args.resume:
-        config = torch.load(args.resume)['config_file']
-    if args.device:
-        os.environ["CUDA_VISIBLE_DEVICES"]=args.device
+    cv.waitKey(0)
 
-    main(config, args.resume)
+# svhn_data, mnist_data = to_variable(svhn_data[0]).unsqueeze(0), to_variable(mnist_data[0]).unsqueeze(0)
+# real_svhn, real_mnist = to_numpy(svhn_data).squeeze(0), to_numpy(mnist_data).squeeze()
+# real_svhn, real_mnist = np.swapaxes(real_svhn, 0, 2), np.swapaxes(real_mnist, 0, 1)
+#
+# fake_svhn, fake_mnist = to_numpy(generator_ab(mnist_data).squeeze(0)), to_numpy(generator_ba(svhn_data).squeeze())
+# fake_svhn, fake_mnist = np.swapaxes(fake_svhn, 0, 2), np.swapaxes(fake_mnist, 0, 1)
+#
+# real_svhn, real_mnist = np.swapaxes(real_svhn, 0, 1), np.swapaxes(real_mnist, 0, 1)
+# fake_svhn, fake_mnist = np.swapaxes(fake_svhn, 0, 1), np.swapaxes(fake_mnist, 0, 1)
+#
+# real_svhn, fake_svhn = cv.cvtColor(real_svhn, cv.COLOR_BGR2RGB), cv.cvtColor(fake_svhn, cv.COLOR_BGR2RGB)
+#
+# cv.imshow('FAKE SVHN', fake_svhn)
+# cv.imshow('REAL SVHN', real_svhn)
+# cv.imshow('FAKE MNIST', fake_mnist)
+# cv.imshow('REAL MNIST', real_mnist)
+#
+# cv.waitKey(0)
+

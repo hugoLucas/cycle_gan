@@ -4,6 +4,7 @@ import argparse
 import torch
 import data_loader.data_loaders as module_data
 import model.cycle_gan as gan
+import model.cycle_gan_complex as gan_complex
 from trainer import gan_trainer
 from utils import Logger
 
@@ -11,21 +12,21 @@ from utils import Logger
 def get_instance(module, name, config, *args):
     return getattr(module, config[name]['type'])(*args, **config[name]['args'])
 
-def main(config, resume):
-    train_logger = Logger()
+def main(config):
 
     # setup data_loader instances
     class_a_data_loader = get_instance(module_data, 'data_loader_a', config)
-    valid_a_data_loader = class_a_data_loader.split_validation()
-
     class_b_data_loader = get_instance(module_data, 'data_loader_b', config)
-    valid_b_data_loader = class_b_data_loader.split_validation()
 
     # build model architecture
-    generator_ab = gan.Generator(input_class_channels=1, output_class_channels=3, internal_channels=64)
-    generator_ba = gan.Generator(input_class_channels=3, output_class_channels=1, internal_channels=64)
-    discriminator_a = gan.Discriminator(input_class_channels=1, n_output_labels=1, internal_channels=64)
-    discriminator_b = gan.Discriminator(input_class_channels=3, n_output_labels=1, internal_channels=64)
+    # generator_ab = gan.Generator(input_class_channels=1, output_class_channels=3, internal_channels=64)
+    # generator_ba = gan.Generator(input_class_channels=3, output_class_channels=1, internal_channels=64)
+    # discriminator_a = gan.Discriminator(input_class_channels=1, n_output_labels=1, internal_channels=64)
+    # discriminator_b = gan.Discriminator(input_class_channels=3, n_output_labels=1, internal_channels=64)
+    generator_ab = gan_complex.ResnetGenerator(n_input_channels=1, n_output_channels=3)
+    generator_ba = gan_complex.ResnetGenerator(n_input_channels=3, n_output_channels=1)
+    discriminator_a = gan_complex.NLayerDiscriminator(n_input_channels=1)
+    discriminator_b = gan_complex.NLayerDiscriminator(n_input_channels=3)
 
     trainer = gan_trainer.GANTrainer(generator_ab, generator_ba, discriminator_a, discriminator_b, class_a_data_loader,
                                      class_b_data_loader, config)
@@ -56,4 +57,4 @@ if __name__ == '__main__':
     if args.device:
         os.environ["CUDA_VISIBLE_DEVICES"]=args.device
 
-    main(config_file, args.resume)
+    main(config_file)

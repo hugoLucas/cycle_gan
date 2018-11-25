@@ -82,6 +82,9 @@ class GANTrainer:
                     total_loss.backward()
                     avg_b_a_loss += total_loss
                     self.gen_optimizer.step()
+
+                    if n_iter % 20 == 0:
+                        print("{}.{} complete.".format(n_epoch, n_iter))
                 except StopIteration:
                     break
 
@@ -95,10 +98,10 @@ class GANTrainer:
             a_iterator, b_iterator = iter(self.dataA), iter(self.dataB)
 
             # Save the model each epoch
-            torch.save(self.genAB.state_dict(), './data/models/genAB-{}.pkl'.format(n_epoch))
-            torch.save(self.genBA.state_dict(), './data/models/genBA-{}.pkl'.format(n_epoch))
-            torch.save(self.discA.state_dict(), './data/models/discA-{}.pkl'.format(n_epoch))
-            torch.save(self.discB.state_dict(), './data/models/discB-{}.pkl'.format(n_epoch))
+            torch.save(self.genAB.state_dict(), './data/models/{}_genAB.pkl'.format(n_epoch))
+            torch.save(self.genBA.state_dict(), './data/models/{}_genBA.pkl'.format(n_epoch))
+            torch.save(self.discA.state_dict(), './data/models/{}_discA.pkl'.format(n_epoch))
+            torch.save(self.discB.state_dict(), './data/models/{}_discB.pkl'.format(n_epoch))
 
 
     def reset_optimizers(self):
